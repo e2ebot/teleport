@@ -21,6 +21,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net"
@@ -476,6 +477,7 @@ func (c *NodeClient) handleGlobalRequests(ctx context.Context, requestCh <-chan 
 				}
 			default:
 				// This handles keepalive messages and matches the behaviour of OpenSSH.
+				fmt.Printf("--> KEEP ALIVE? %v\r\n", r.Type)
 				r.Reply(false, nil)
 			}
 		case <-ctx.Done():

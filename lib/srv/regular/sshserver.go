@@ -860,6 +860,22 @@ func (s *Server) handleSessionRequests(sconn *ssh.ServerConn, identityContext sr
 	ctx.AddCloser(ch)
 	defer ctx.Close()
 
+	closeContext, closeCancel := context.WithCancel(context.Background())
+	defer closeCancel()
+
+	clusterConfig, err := s.GetAccessPoint().GetClusterConfig()
+	if err != nil {
+		log.Errorf("Unable to fetch cluster config: %v.", err)
+		return
+	}
+
+	go srv.StartKeepAliveLoop(srv.KeepAliveConfig{
+		Conns:        []srv.RequestSender{sconn},
+		Timeout:      clusterConfig.GetKeepAliveInterval(),
+		CloseContext: closeContext,
+		CloseCancel:  closeCancel,
+	})
+
 	for {
 		// update ctx with the session ID:
 		if !s.proxyMode {
@@ -904,6 +920,9 @@ func (s *Server) handleSessionRequests(sconn *ssh.ServerConn, identityContext sr
 			if err != nil {
 				ctx.Infof("[SSH] %v failed to send exit status: %v", result.Command, err)
 			}
+			return
+		case <-closeContext.Done():
+			fmt.Printf("--> CLOSING DUE TO KEEP ALIVE!\r\n")
 			return
 		}
 	}

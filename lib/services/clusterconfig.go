@@ -74,6 +74,14 @@ type ClusterConfig interface {
 	// SetDisconnectExpiredCert sets disconnect client with expired certificate setting
 	SetDisconnectExpiredCert(bool)
 
+	// GetKeepAliveInterval gets the keep-alive interval for server to client
+	// connections.
+	GetKeepAliveInterval() time.Duration
+
+	// SetKeepAliveInterval sets the keep-alive interval for server to client
+	// connections.
+	SetKeepAliveInterval(t time.Duration)
+
 	// Copy creates a copy of the resource and returns it.
 	Copy() ClusterConfig
 }
@@ -109,6 +117,7 @@ func DefaultClusterConfig() ClusterConfig {
 		Spec: ClusterConfigSpecV3{
 			SessionRecording:    RecordAtNode,
 			ProxyChecksHostKeys: HostKeyCheckYes,
+			KeepAliveInterval:   NewDuration(defaults.DefaultIdleConnectionDuration / 3),
 		},
 	}
 }
@@ -207,6 +216,9 @@ type ClusterConfigSpecV3 struct {
 	// DisconnectExpiredCert provides disconnect expired certificate setting -
 	// if true, connections with expired client certificates will get disconnected
 	DisconnectExpiredCert Bool `json:"disconnect_expired_cert"`
+
+	// KeepAliveInterval is the keep-alive internal for the server.
+	KeepAliveInterval Duration `json:"keep_alive_interval"`
 }
 
 // GetName returns the name of the cluster.
@@ -299,6 +311,16 @@ func (c *ClusterConfigV3) SetDisconnectExpiredCert(b bool) {
 	c.Spec.DisconnectExpiredCert.bool = b
 }
 
+// GetKeepAliveInterval gets the keep-alive interval.
+func (c *ClusterConfigV3) GetKeepAliveInterval() time.Duration {
+	return c.Spec.KeepAliveInterval.Duration
+}
+
+// SetKeepAliveInterval sets the keep-alive interval.
+func (c *ClusterConfigV3) SetKeepAliveInterval(t time.Duration) {
+	c.Spec.KeepAliveInterval.Duration = t
+}
+
 // CheckAndSetDefaults checks validity of all parameters and sets defaults.
 func (c *ClusterConfigV3) CheckAndSetDefaults() error {
 	// make sure we have defaults for all metadata fields
@@ -326,6 +348,10 @@ func (c *ClusterConfigV3) CheckAndSetDefaults() error {
 	ok = utils.SliceContainsStr(all, c.Spec.ProxyChecksHostKeys)
 	if !ok {
 		return trace.BadParameter("proxy_checks_host_keys must be one of: %v", strings.Join(all, ","))
+	}
+
+	if c.Spec.KeepAliveInterval.Duration == 0 {
+		c.Spec.KeepAliveInterval = NewDuration(defaults.DefaultIdleConnectionDuration / 3)
 	}
 
 	return nil
@@ -363,6 +389,9 @@ const ClusterConfigSpecSchemaTemplate = `{
     "disconnect_expired_cert": {
       "anyOf": [{"type": "string"}, { "type": "boolean"}]
     },
+    "keep_alive_interval": {
+      "type": "string"
+    },
     "audit": {
       "type": "object",
       "additionalProperties": false,
@@ -375,7 +404,7 @@ const ClusterConfigSpecSchemaTemplate = `{
         },
         "audit_events_uri": {
           "anyOf": [
-            {"type": "string"}, 
+            {"type": "string"},
             {"type": "array",
              "items": {
                "type": "string"
